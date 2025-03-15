@@ -50,8 +50,6 @@ else:
 
         documents[i].embedding = embedding.tolist()
 
-        print(documents[i])
-
     document_store = InMemoryDocumentStore(embedding_similarity_function="cosine")
 
     # Write the embedded documents to the document store
