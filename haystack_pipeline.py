@@ -1,6 +1,7 @@
 import os
 from utils import load_jsonl
 import numpy as np
+import pandas as pd
 from haystack import Document, Pipeline
 from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.components.writers import DocumentWriter
@@ -61,15 +62,29 @@ else:
 pipeline = Pipeline()
 pipeline.add_component("retriever", InMemoryEmbeddingRetriever(document_store=document_store, top_k=100))
 
-query = "0-dimensional biomaterials show inductive properties."
-query = get_vector_embedding(query)
+queries = load_jsonl("queries_for_test.jsonl")
+scores = pd.DataFrame()
 
-result = pipeline.run({
-    "retriever": {
-        "query_embedding": query
-    }
-})
+for i in range(len(queries)):
+    print(f"Generating results for query {i + 1}/{len(queries)}")
+    result = pipeline.run({
+        "retriever": {
+            "query_embedding": get_vector_embedding(queries[i]["text"])
+        }
+    })
 
-results = result["retriever"]["documents"]
-results = [document.id for document in results]
-print("31715818" in results)
+    results = result["retriever"]["documents"]
+
+    for j in range(len(results)):
+        row = {
+            "ID": queries[i]["_id"],
+            "Constant": "Q0",
+            "DocID": results[j].id,
+            "Rank": j,
+            "Score": "{:.6f}".format(results[j].score),
+            "RunTag": "run1"
+        }
+
+        scores = pd.concat([scores, pd.DataFrame(data=[row])])
+
+scores.to_csv(r"results.txt", header=False, index=False, sep=" ")
