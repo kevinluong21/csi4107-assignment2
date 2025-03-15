@@ -1,5 +1,6 @@
 import os
 from utils import load_jsonl
+import numpy as np
 from haystack import Document, Pipeline
 from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.components.writers import DocumentWriter
@@ -15,7 +16,7 @@ from transformers import BertTokenizer, BertModel
 tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
 model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
 
-def get_vector_embedding(text:str):
+def get_vector_embedding(text:str) -> list:
     encoded_input = tokenizer(text, return_tensors='pt')
     output = model(**encoded_input)
     return output.last_hidden_state[:, 0, :][0].tolist()
@@ -30,16 +31,26 @@ else:
     documents = load_jsonl("scifact/corpus.jsonl")
 
     # For each document in the corpus, create a Document object
-    documents = [Document(id=document["_id"], content=document["title"] + ". " + document["text"], meta=document["metadata"]) for document in documents]
+    documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta=document["metadata"]) for document in documents]
 
-    splitter = DocumentSplitter(split_by="sentence", split_length=3, split_overlap=1)
+    splitter = DocumentSplitter(split_by="sentence", split_length=3, split_overlap=0)
     splitter.warm_up()
-
-    documents = splitter.run(documents)["documents"]
 
     for i in range(len(documents)):
         print(f"Embedding document {i + 1}/{len(documents)}...")
-        documents[i].embedding = get_vector_embedding(documents[i].content)
+        chunks = splitter.run([documents[i]])["documents"]
+
+        embeddings = []
+
+        for j in range(len(chunks)):
+            embeddings.append(get_vector_embedding(chunks[j].content))
+
+        # Perform mean pooling to capture features across multiple chunks
+        embedding = np.mean(embeddings, axis=0)
+
+        documents[i].embedding = embedding.tolist()
+
+        print(documents[i])
 
     document_store = InMemoryDocumentStore(embedding_similarity_function="cosine")
 
