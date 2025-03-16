@@ -5,9 +5,9 @@ import pandas as pd
 from haystack import Document, Pipeline
 from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.components.writers import DocumentWriter
-from haystack.components.preprocessors import DocumentSplitter
+from haystack.components.preprocessors import DocumentCleaner, DocumentSplitter
 # from haystack.components.embedders import SentenceTransformersDocumentEmbedder
-from haystack.components.retrievers import InMemoryEmbeddingRetriever
+from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
 # from haystack.components.rankers import TransformersSimilarityRanker
 from transformers import BertTokenizer, BertModel
 
@@ -34,6 +34,15 @@ else:
     # For each document in the corpus, create a Document object
     documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta=document["metadata"]) for document in documents]
 
+    cleaner = DocumentCleaner(
+        remove_empty_lines=True,
+        remove_extra_whitespaces=True,
+        remove_repeated_substrings=True,
+        unicode_normalization="NFKC"
+    )
+    cleaner.warm_up()
+    documents = cleaner.run(documents)["documents"]
+
     splitter = DocumentSplitter(split_by="sentence", split_length=3, split_overlap=0)
     splitter.warm_up()
 
@@ -59,21 +68,32 @@ else:
 
     document_store.save_to_disk("document_store.json")
 
-pipeline = Pipeline()
-pipeline.add_component("retriever", InMemoryEmbeddingRetriever(document_store=document_store, top_k=100))
+# pipeline = Pipeline()
+# pipeline.add_component("bert_retriever", InMemoryEmbeddingRetriever(document_store=document_store, top_k=100))
+
+bm25_retriever = InMemoryBM25Retriever(document_store=document_store, top_k=100)
 
 queries = load_jsonl("queries_for_test.jsonl")
 scores = pd.DataFrame()
 
 for i in range(len(queries)):
     print(f"Generating results for query {i + 1}/{len(queries)}")
-    result = pipeline.run({
-        "retriever": {
-            "query_embedding": get_vector_embedding(queries[i]["text"])
-        }
-    })
 
-    results = result["retriever"]["documents"]
+    results = bm25_retriever.run(query=queries[i]["text"])["documents"]
+
+    temp = InMemoryDocumentStore()
+    temp.write_documents(results)
+
+    bert_ranker = InMemoryEmbeddingRetriever(document_store=temp, top_k=100)
+    results = bert_ranker.run(query_embedding=get_vector_embedding(queries[i]["text"]))["documents"]
+
+    # result = pipeline.run({
+    #     "bert_retriever": {
+    #         "query_embedding": get_vector_embedding(queries[i]["text"])
+    #     }
+    # })
+
+    # results = result["bert_retriever"]["documents"]
 
     for j in range(len(results)):
         row = {
@@ -87,4 +107,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-scores.to_csv(r"results.txt", header=False, index=False, sep=" ")
+scores.to_csv(r"results_hybrid.txt", header=False, index=False, sep=" ")
