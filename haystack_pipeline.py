@@ -1,5 +1,6 @@
 import os
 from utils import load_jsonl
+from preprocessing import format_for_bm25
 import numpy as np
 import pandas as pd
 from haystack import Document, Pipeline
@@ -9,13 +10,16 @@ from haystack.components.preprocessors import DocumentCleaner, DocumentSplitter
 # from haystack.components.embedders import SentenceTransformersDocumentEmbedder
 from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
 # from haystack.components.rankers import TransformersSimilarityRanker
-from transformers import BertTokenizer, BertModel
+from transformers import AutoTokenizer, AutoModel, BertTokenizer, BertModel
 
 # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # model = BertModel.from_pretrained("bert-base-uncased")
 
-tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
-model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
+# tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+# model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
+
+tokenizer = AutoTokenizer.from_pretrained("google/bigbird-pegasus-large-arxiv")
+model = AutoModel.from_pretrained("google/bigbird-pegasus-large-arxiv")
 
 def get_vector_embedding(text:str) -> list:
     encoded_input = tokenizer(text, return_tensors='pt')
@@ -32,7 +36,7 @@ else:
     documents = load_jsonl("scifact/corpus.jsonl")
 
     # For each document in the corpus, create a Document object
-    documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta=document["metadata"]) for document in documents]
+    documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta={"title": document["title"], **document["metadata"]}) for document in documents]
 
     cleaner = DocumentCleaner(
         remove_empty_lines=True,
@@ -49,22 +53,27 @@ else:
 
     for i in range(len(documents)):
         print(f"Embedding document {i + 1}/{len(documents)}...")
-        chunks = splitter.run([documents[i]])["documents"]
+        documents[i].embedding = get_vector_embedding(documents[i].content)
+        documents[i].content = format_for_bm25(documents[i].content)
 
-        embeddings = []
+        print(documents[i])
 
-        for j in range(len(chunks)):
-            embeddings.append(get_vector_embedding(chunks[j].content))
+        # chunks = splitter.run([documents[i]])["documents"]
 
-        # # Perform mean pooling to capture features across multiple chunks
-        # embedding = np.mean(embeddings, axis=0)
+        # embeddings = []
 
-        # Perform max pooling to capture features across multiple chunks
-        embedding = np.max(embeddings, axis=0)
+        # for j in range(len(chunks)):
+        #     embeddings.append(get_vector_embedding(chunks[j].content))
 
-        documents[i].embedding = embedding.tolist()
+        # # # Perform mean pooling to capture features across multiple chunks
+        # # embedding = np.mean(embeddings, axis=0)
 
-    document_store = InMemoryDocumentStore(embedding_similarity_function="cosine")
+        # # Perform max pooling to capture features across multiple chunks
+        # embedding = np.max(embeddings, axis=0)
+
+        # documents[i].embedding = embedding.tolist()
+
+    document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine")
 
     # Write the embedded documents to the document store
     writer = DocumentWriter(document_store=document_store)
@@ -111,4 +120,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-scores.to_csv(r"results_bert.txt", header=False, index=False, sep=" ")
+scores.to_csv(r"results_bigbird.txt", header=False, index=False, sep=" ")

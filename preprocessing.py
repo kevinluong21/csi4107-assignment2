@@ -112,7 +112,7 @@ def is_hyphenated_compound_word(word:str) -> bool:
             return True
     return False
 
-def extract_index_terms(text:str) -> str:
+def format_for_bm25(text:str) -> str:
     '''
     Given a string, extracts all of the relevant index terms along with their term frequencies, ignoring numbers, punctuation, and stopwords.
 
@@ -137,8 +137,10 @@ def extract_index_terms(text:str) -> str:
     words = [word for list_of_words in words for word in list_of_words] # Flatten the list of lists into a single list
     # Remove any empty strings and stopwords
     words = [word for word in words if word and word not in stop_words]
-    # Lemmatize each word
-    words = [lemmatizer.lemmatize(word) for word in words]
+    # Lemmatize each word (take the root word on each POS and take the shortest word as the root word)
+    for i in range(len(words)):
+        word = words[i]
+        words[i] = min(lemmatizer.lemmatize(word, pos="n"), lemmatizer.lemmatize(word, pos="v"), lemmatizer.lemmatize(word, pos="a"), key=len)
 
     # Concatenate all words into a string
     return " ".join(words)
