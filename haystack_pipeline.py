@@ -1,9 +1,13 @@
+# the following architecture is inspired by https://haystack.deepset.ai/cookbook/query-expansion
+
 import os
-from utils import load_jsonl
+from utils import load_jsonl, QueryExpander, MultiQueryInMemoryBM25Retriever, InMemoryEmbeddingRanker
 from preprocessing import format_for_bm25
+from dotenv import load_dotenv
 import numpy as np
 import pandas as pd
 from haystack import Document, Pipeline
+from haystack.utils import Secret
 from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.components.writers import DocumentWriter
 from haystack.components.preprocessors import DocumentCleaner, DocumentSplitter
@@ -11,15 +15,21 @@ from haystack.components.preprocessors import DocumentCleaner, DocumentSplitter
 from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
 # from haystack.components.rankers import TransformersSimilarityRanker
 from transformers import AutoTokenizer, AutoModel, BertTokenizer, BertModel
+from haystack.components.generators import HuggingFaceLocalGenerator
+from optimum.quanto import QuantizedModelForCausalLM
 
 # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # model = BertModel.from_pretrained("bert-base-uncased")
 
-# tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
-# model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
+tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
 
-tokenizer = AutoTokenizer.from_pretrained("google/bigbird-pegasus-large-arxiv")
-model = AutoModel.from_pretrained("google/bigbird-pegasus-large-arxiv")
+# tokenizer = AutoTokenizer.from_pretrained("google/bigbird-pegasus-large-arxiv")
+# model = AutoModel.from_pretrained("google/bigbird-pegasus-large-arxiv")
+
+load_dotenv()
+
+llm = HuggingFaceLocalGenerator(model="thesven/Mistral-7B-Instruct-v0.3-GPTQ", huggingface_pipeline_kwargs={"device_map": "balanced"}, token=Secret.from_env_var("HF_TOKEN"))
 
 def get_vector_embedding(text:str) -> list:
     encoded_input = tokenizer(text, return_tensors='pt')
@@ -53,25 +63,25 @@ else:
 
     for i in range(len(documents)):
         print(f"Embedding document {i + 1}/{len(documents)}...")
-        documents[i].embedding = get_vector_embedding(documents[i].content)
+        # documents[i].embedding = get_vector_embedding(documents[i].content)
+
+        chunks = splitter.run([documents[i]])["documents"]
+
+        embeddings = []
+
+        for j in range(len(chunks)):
+            embeddings.append(get_vector_embedding(chunks[j].content))
+
+        # # Perform mean pooling to capture features across multiple chunks
+        # embedding = np.mean(embeddings, axis=0)
+
+        # Perform max pooling to capture features across multiple chunks
+        embedding = np.max(embeddings, axis=0)
+
+        documents[i].embedding = embedding.tolist()
         documents[i].content = format_for_bm25(documents[i].content)
 
         print(documents[i])
-
-        # chunks = splitter.run([documents[i]])["documents"]
-
-        # embeddings = []
-
-        # for j in range(len(chunks)):
-        #     embeddings.append(get_vector_embedding(chunks[j].content))
-
-        # # # Perform mean pooling to capture features across multiple chunks
-        # # embedding = np.mean(embeddings, axis=0)
-
-        # # Perform max pooling to capture features across multiple chunks
-        # embedding = np.max(embeddings, axis=0)
-
-        # documents[i].embedding = embedding.tolist()
 
     document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine")
 
@@ -82,15 +92,34 @@ else:
     document_store.save_to_disk("document_store.json")
 
 pipeline = Pipeline()
-pipeline.add_component("bert_retriever", InMemoryEmbeddingRetriever(document_store=document_store, top_k=100))
+pipeline.add_component("query_expander", QueryExpander(llm=llm))
+pipeline.add_component("bm25_retriever", MultiQueryInMemoryBM25Retriever(retriever=InMemoryBM25Retriever(document_store=document_store), top_k=100))
+pipeline.add_component("bert_ranker", InMemoryEmbeddingRanker())
 
-# bm25_retriever = InMemoryBM25Retriever(document_store=document_store, top_k=100)
+pipeline.connect("query_expander.queries", "bm25_retriever.queries")
+pipeline.connect("bm25_retriever.documents", "bert_ranker.documents")
 
 queries = load_jsonl("queries_for_test.jsonl")
 scores = pd.DataFrame()
 
 for i in range(len(queries)):
     print(f"Generating results for query {i + 1}/{len(queries)}")
+
+    results = pipeline.run({
+        "query_expander": {
+            "query": queries[i]["text"],
+            "number": 5
+        },
+        "bm25_retriever": {
+            "top_k": 100
+        },
+        "bert_ranker": {
+            "query_embedding": get_vector_embedding(queries[i]["text"]),
+            "top_k": 100
+        }
+    })
+
+    results = results["bert_ranker"]["documents"]
 
     # results = bm25_retriever.run(query=queries[i]["text"])["documents"]
 
@@ -100,13 +129,13 @@ for i in range(len(queries)):
     # bert_ranker = InMemoryEmbeddingRetriever(document_store=temp, top_k=100)
     # results = bert_ranker.run(query_embedding=get_vector_embedding(queries[i]["text"]))["documents"]
 
-    result = pipeline.run({
-        "bert_retriever": {
-            "query_embedding": get_vector_embedding(queries[i]["text"])
-        }
-    })
+    # result = pipeline.run({
+    #     "bert_retriever": {
+    #         "query_embedding": get_vector_embedding(queries[i]["text"])
+    #     }
+    # })
 
-    results = result["bert_retriever"]["documents"]
+    # results = result["bert_retriever"]["documents"]
 
     for j in range(len(results)):
         row = {
@@ -120,4 +149,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-scores.to_csv(r"results_bigbird.txt", header=False, index=False, sep=" ")
+scores.to_csv(r"results_hybrid.txt", header=False, index=False, sep=" ")
