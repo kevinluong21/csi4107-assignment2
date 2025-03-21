@@ -1,5 +1,5 @@
 IR System,MAP,P@10
 BM25,0.5485,0.0847
 SciBERT,0.0719,0.0153
-Hybrid,0.1342,0.0340
 BigBird,0.0337,0.0057
+Hybrid,

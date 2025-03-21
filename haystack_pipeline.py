@@ -150,7 +150,7 @@ for i in range(len(queries)):
             "ID": queries[i]["_id"],
             "Constant": "Q0",
             "DocID": results[j].id,
-            "Rank": j + 1,
+            "Rank": j,
             "Score": "{:.6f}".format(results[j].score),
             "RunTag": "run1"
         }
