@@ -157,4 +157,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-    scores.to_csv(r"results_hybrid.txt", header=False, index=False, sep=" ")
+    scores.to_csv(r"results_hybrid_scibert.txt", header=False, index=False, sep=" ")

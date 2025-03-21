@@ -83,6 +83,7 @@ class MultiQueryInMemoryBM25Retriever:
           result = self.retriever.run(query = query, top_k = self.top_k)
           for doc in result['documents']:
             self.add_document(doc)
+
         self.results.sort(key=lambda x: x.score, reverse=True)
         return {"documents": self.results}
 
@@ -91,10 +92,16 @@ class MultiQueryInMemoryBM25Retriever:
 class InMemoryEmbeddingRanker:
     def __init__(self, top_k: int = 100):
         self.results = []
+        self.ids = set()
         self.top_k = top_k
 
     def add_document(self, document: Document):
-        self.results.append(document)
+        """
+        Only adds a new document if the document was not already retrieved.
+        """
+        if document.id not in self.ids:
+            self.results.append(document)
+            self.ids.add(document.id)
 
     @component.output_types(documents=List[Document])
     def run(self, query_embedding, documents: List[Document], top_k: int = 100):
