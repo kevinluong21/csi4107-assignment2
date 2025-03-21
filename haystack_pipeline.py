@@ -1,6 +1,7 @@
 # the following architecture is inspired by https://haystack.deepset.ai/cookbook/query-expansion
 
 import os
+import time
 from utils import load_jsonl, QueryExpander, MultiQueryInMemoryBM25Retriever, InMemoryEmbeddingRanker
 from preprocessing import format_for_bm25
 from dotenv import load_dotenv
@@ -17,6 +18,7 @@ from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbedd
 from transformers import AutoTokenizer, AutoModel, BertTokenizer, BertModel
 from haystack.components.generators import HuggingFaceLocalGenerator
 from optimum.quanto import QuantizedModelForCausalLM
+from haystack_integrations.components.generators.google_ai import GoogleAIGeminiGenerator
 
 # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # model = BertModel.from_pretrained("bert-base-uncased")
@@ -29,7 +31,8 @@ model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
 
 load_dotenv()
 
-llm = HuggingFaceLocalGenerator(model="thesven/Mistral-7B-Instruct-v0.3-GPTQ", huggingface_pipeline_kwargs={"device_map": "balanced"}, token=Secret.from_env_var("HF_TOKEN"))
+# llm = HuggingFaceLocalGenerator(model="thesven/Mistral-7B-Instruct-v0.3-GPTQ", huggingface_pipeline_kwargs={"device_map": "balanced"}, token=Secret.from_env_var("HF_TOKEN"))
+llm = GoogleAIGeminiGenerator(model="gemini-2.0-flash-lite", api_key=Secret.from_env_var("GOOGLE_AI_STUDIO"))
 
 def get_vector_embedding(text:str) -> list:
     encoded_input = tokenizer(text, return_tensors='pt')
@@ -105,10 +108,15 @@ scores = pd.DataFrame()
 for i in range(len(queries)):
     print(f"Generating results for query {i + 1}/{len(queries)}")
 
+    # To avoid hitting Google AI Studio's rate limits, the program will sleep for a minute every 30 requests
+    if (i + 1) % 30 == 0:
+        print("Program will sleep for 60 seconds to avoid rate limits...")
+        time.sleep(60)
+
     results = pipeline.run({
         "query_expander": {
             "query": queries[i]["text"],
-            "number": 5
+            "number": 10
         },
         "bm25_retriever": {
             "top_k": 100
@@ -142,11 +150,11 @@ for i in range(len(queries)):
             "ID": queries[i]["_id"],
             "Constant": "Q0",
             "DocID": results[j].id,
-            "Rank": j,
+            "Rank": j + 1,
             "Score": "{:.6f}".format(results[j].score),
             "RunTag": "run1"
         }
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-scores.to_csv(r"results_hybrid.txt", header=False, index=False, sep=" ")
+    scores.to_csv(r"results_hybrid.txt", header=False, index=False, sep=" ")

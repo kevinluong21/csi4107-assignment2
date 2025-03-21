@@ -7,36 +7,38 @@ from haystack.components.writers import DocumentWriter
 from haystack.components.builders import PromptBuilder
 from haystack.components.generators import HuggingFaceLocalGenerator
 from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
+from haystack_integrations.components.generators.google_ai import GoogleAIGeminiGenerator
 
 def load_jsonl(file_path):
     with open(file_path, 'r') as file:
         return [json.loads(line) for line in file]
+    
 
 # this script comes from https://haystack.deepset.ai/cookbook/query-expansion and was modified to work with HuggingFace
 @component
 class QueryExpander:
 
-    def __init__(self, llm:HuggingFaceLocalGenerator, prompt: Optional[str] = None):
+    def __init__(self, llm:GoogleAIGeminiGenerator, prompt: Optional[str] = None):
         self.query_expansion_prompt = prompt
         if prompt == None:
           self.query_expansion_prompt = """
-          You are part of an information system that processes user queries.
-          You must expand a given query and return {{number}} queries that are similar in meaning by employing synonyms for the query after <<<>>> and return a Python list.
-          Do NOT include "Example Expanded Queries" in your response.
-          Do NOT number your responses.
-          You MUST separate your queries with a comma. Do NOT separate the queries using a newline character.
+          You are part of an information system that processes users queries.
+          You expand a given query into {{number}} queries that are similar in meaning using as many different synonyms as possible.
+          ONLY return a Python list as a string. Do not elaborate on your answer and do not wrap your answer as Python code.
+          For each expanded query, please wrap the string in double quotes (") and NOT single quotes.
           
-          ###
-          Here are some examples:
-          Query: "climate change effects"
-          Example Expanded Queries: "impact of climate change", "consequences of global warming", "effects of environmental changes"
-          Query: "machine learning algorithms"
-          Example Expanded Queries: "neural networks", "clustering", "supervised learning", "deep learning"
-          ###
-
-          <<<
+          Structure:
+          Follow the structure shown below in examples to generate expanded queries.
+          Examples:
+          Example Query 1: "climate change effects"
+          Example Expanded Queries: ["impact of climate change", "consequences of global warming", "effects of environmental changes"]
+          
+          Example Query 2: ""machine learning algorithms""
+          Example Expanded Queries: ["neural networks", "clustering", "supervised learning", "deep learning"]
+          
+          Your Task:
           Query: "{{query}}"
-          >>>
+          Example Expanded Queries:
           """
         builder = PromptBuilder(self.query_expansion_prompt)
         self.pipeline = Pipeline()
@@ -55,7 +57,7 @@ class QueryExpander:
 @component
 class MultiQueryInMemoryBM25Retriever:
 
-    def __init__(self, retriever: InMemoryBM25Retriever, top_k: int = 3):
+    def __init__(self, retriever: InMemoryBM25Retriever, top_k: int = 100):
 
         self.retriever = retriever
         self.results = []
@@ -71,7 +73,7 @@ class MultiQueryInMemoryBM25Retriever:
             self.ids.add(document.id)
 
     @component.output_types(documents=List[Document])
-    def run(self, queries: List[str], top_k: int = None):
+    def run(self, queries: List[str], top_k: int = 100):
         if top_k != None:
           self.top_k = top_k
 
@@ -87,7 +89,7 @@ class MultiQueryInMemoryBM25Retriever:
 # this script was inspired by the scripts from https://haystack.deepset.ai/cookbook/query-expansion
 @component
 class InMemoryEmbeddingRanker:
-    def __init__(self, top_k: int = 3):
+    def __init__(self, top_k: int = 100):
         self.results = []
         self.top_k = top_k
 
@@ -95,7 +97,7 @@ class InMemoryEmbeddingRanker:
         self.results.append(document)
 
     @component.output_types(documents=List[Document])
-    def run(self, query_embedding, documents: List[Document], top_k: int = None):
+    def run(self, query_embedding, documents: List[Document], top_k: int = 100):
         if top_k != None:
           self.top_k = top_k
 
@@ -109,4 +111,5 @@ class InMemoryEmbeddingRanker:
             self.add_document(doc)
 
         self.results.sort(key=lambda x: x.score, reverse=True)
+        self.results = self.results[:100]
         return {"documents": self.results}
