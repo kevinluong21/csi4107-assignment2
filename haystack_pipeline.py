@@ -23,11 +23,11 @@ from haystack_integrations.components.generators.google_ai import GoogleAIGemini
 # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # model = BertModel.from_pretrained("bert-base-uncased")
 
-tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
-model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
+# tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+# model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
 
-# tokenizer = AutoTokenizer.from_pretrained("google/bigbird-pegasus-large-arxiv")
-# model = AutoModel.from_pretrained("google/bigbird-pegasus-large-arxiv")
+tokenizer = AutoTokenizer.from_pretrained("google/bigbird-pegasus-large-arxiv")
+model = AutoModel.from_pretrained("google/bigbird-pegasus-large-arxiv")
 
 load_dotenv()
 
@@ -66,22 +66,22 @@ else:
 
     for i in range(len(documents)):
         print(f"Embedding document {i + 1}/{len(documents)}...")
-        # documents[i].embedding = get_vector_embedding(documents[i].content)
+        documents[i].embedding = get_vector_embedding(documents[i].content)
 
-        chunks = splitter.run([documents[i]])["documents"]
+        # chunks = splitter.run([documents[i]])["documents"]
 
-        embeddings = []
+        # embeddings = []
 
-        for j in range(len(chunks)):
-            embeddings.append(get_vector_embedding(chunks[j].content))
+        # for j in range(len(chunks)):
+        #     embeddings.append(get_vector_embedding(chunks[j].content))
 
-        # # Perform mean pooling to capture features across multiple chunks
-        # embedding = np.mean(embeddings, axis=0)
+        # # # Perform mean pooling to capture features across multiple chunks
+        # # embedding = np.mean(embeddings, axis=0)
 
-        # Perform max pooling to capture features across multiple chunks
-        embedding = np.max(embeddings, axis=0)
+        # # Perform max pooling to capture features across multiple chunks
+        # embedding = np.max(embeddings, axis=0)
 
-        documents[i].embedding = embedding.tolist()
+        # documents[i].embedding = embedding.tolist()
         documents[i].content = format_for_bm25(documents[i].content)
 
         print(documents[i])
@@ -96,7 +96,7 @@ else:
 
 pipeline = Pipeline()
 pipeline.add_component("query_expander", QueryExpander(llm=llm))
-pipeline.add_component("bm25_retriever", MultiQueryInMemoryBM25Retriever(retriever=InMemoryBM25Retriever(document_store=document_store), top_k=100))
+pipeline.add_component("bm25_retriever", MultiQueryInMemoryBM25Retriever(retriever=InMemoryBM25Retriever(document_store=document_store, scale_score=True), top_k=100))
 pipeline.add_component("bert_ranker", InMemoryEmbeddingRanker())
 
 pipeline.connect("query_expander.queries", "bm25_retriever.queries")
@@ -129,22 +129,6 @@ for i in range(len(queries)):
 
     results = results["bert_ranker"]["documents"]
 
-    # results = bm25_retriever.run(query=queries[i]["text"])["documents"]
-
-    # temp = InMemoryDocumentStore()
-    # temp.write_documents(results)
-
-    # bert_ranker = InMemoryEmbeddingRetriever(document_store=temp, top_k=100)
-    # results = bert_ranker.run(query_embedding=get_vector_embedding(queries[i]["text"]))["documents"]
-
-    # result = pipeline.run({
-    #     "bert_retriever": {
-    #         "query_embedding": get_vector_embedding(queries[i]["text"])
-    #     }
-    # })
-
-    # results = result["bert_retriever"]["documents"]
-
     for j in range(len(results)):
         row = {
             "ID": queries[i]["_id"],
@@ -157,4 +141,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-    scores.to_csv(r"results_hybrid_scibert.txt", header=False, index=False, sep=" ")
+    scores.to_csv(r"results_hybrid_bigbird.txt", header=False, index=False, sep=" ")
