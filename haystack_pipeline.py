@@ -12,7 +12,7 @@ from haystack.utils import Secret
 from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.components.writers import DocumentWriter
 from haystack.components.preprocessors import DocumentCleaner, DocumentSplitter
-# from haystack.components.embedders import SentenceTransformersDocumentEmbedder
+from haystack.components.embedders import SentenceTransformersDocumentEmbedder, SentenceTransformersTextEmbedder
 from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
 # from haystack.components.rankers import TransformersSimilarityRanker
 from transformers import AutoTokenizer, AutoModel, BertTokenizer, BertModel
@@ -39,60 +39,95 @@ def get_vector_embedding(text:str) -> list:
     output = model(**encoded_input)
     return output.last_hidden_state[:, 0, :][0].tolist()
 
-if os.path.exists("document_store.json"):
-    print("Loading existing document store...")
-    document_store = InMemoryDocumentStore()
-    document_store = document_store.load_from_disk("document_store.json")
+# if os.path.exists("document_store.json"):
+#     print("Loading existing document store...")
+#     document_store = InMemoryDocumentStore()
+#     document_store = document_store.load_from_disk("document_store.json")
 
-else:
-    print("Creating a new document store...")
-    documents = load_jsonl("scifact/corpus.jsonl")
+# else:
+#     print("Creating a new document store...")
+#     documents = load_jsonl("scifact/corpus.jsonl")
 
-    # For each document in the corpus, create a Document object
-    documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta={"title": document["title"], **document["metadata"]}) for document in documents]
+#     # For each document in the corpus, create a Document object
+#     documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta={"title": document["title"], **document["metadata"]}) for document in documents]
 
-    cleaner = DocumentCleaner(
-        remove_empty_lines=True,
-        remove_extra_whitespaces=True,
-        remove_repeated_substrings=True,
-        unicode_normalization="NFKC",
-        keep_id=True
-    )
+#     cleaner = DocumentCleaner(
+#         remove_empty_lines=True,
+#         remove_extra_whitespaces=True,
+#         remove_repeated_substrings=True,
+#         unicode_normalization="NFKC",
+#         keep_id=True
+#     )
 
-    documents = cleaner.run(documents)["documents"]
+#     documents = cleaner.run(documents)["documents"]
 
-    splitter = DocumentSplitter(split_by="sentence", split_length=3, split_overlap=0)
-    splitter.warm_up()
+#     splitter = DocumentSplitter(split_by="sentence", split_length=3, split_overlap=0)
+#     splitter.warm_up()
 
-    for i in range(len(documents)):
-        print(f"Embedding document {i + 1}/{len(documents)}...")
-        documents[i].embedding = get_vector_embedding(documents[i].content)
+#     for i in range(len(documents)):
+#         print(f"Embedding document {i + 1}/{len(documents)}...")
+#         documents[i].embedding = get_vector_embedding(documents[i].content)
 
-        # chunks = splitter.run([documents[i]])["documents"]
+#         # chunks = splitter.run([documents[i]])["documents"]
 
-        # embeddings = []
+#         # embeddings = []
 
-        # for j in range(len(chunks)):
-        #     embeddings.append(get_vector_embedding(chunks[j].content))
+#         # for j in range(len(chunks)):
+#         #     embeddings.append(get_vector_embedding(chunks[j].content))
 
-        # # # Perform mean pooling to capture features across multiple chunks
-        # # embedding = np.mean(embeddings, axis=0)
+#         # # # Perform mean pooling to capture features across multiple chunks
+#         # # embedding = np.mean(embeddings, axis=0)
 
-        # # Perform max pooling to capture features across multiple chunks
-        # embedding = np.max(embeddings, axis=0)
+#         # # Perform max pooling to capture features across multiple chunks
+#         # embedding = np.max(embeddings, axis=0)
 
-        # documents[i].embedding = embedding.tolist()
-        documents[i].content = format_for_bm25(documents[i].content)
+#         # documents[i].embedding = embedding.tolist()
+#         documents[i].content = format_for_bm25(documents[i].content)
 
-        print(documents[i])
+#         print(documents[i])
 
-    document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine")
+#     document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine", bm25_parameters={"k": 1.2, "b": 0.5})
 
-    # Write the embedded documents to the document store
-    writer = DocumentWriter(document_store=document_store)
-    writer.run(documents)
+#     # Write the embedded documents to the document store
+#     writer = DocumentWriter(document_store=document_store)
+#     writer.run(documents)
 
-    document_store.save_to_disk("document_store.json")
+#     document_store.save_to_disk("document_store.json")
+
+#     documents = load_jsonl("scifact/corpus.jsonl")
+
+documents = load_jsonl("scifact/corpus.jsonl")
+
+documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta={"title": document["title"], **document["metadata"]}) for document in documents]
+
+cleaner = DocumentCleaner(
+    remove_empty_lines=True,
+    remove_extra_whitespaces=True,
+    remove_repeated_substrings=True,
+    unicode_normalization="NFKC",
+    keep_id=True
+)
+
+documents = cleaner.run(documents)["documents"]
+
+text_embedder = SentenceTransformersTextEmbedder()
+text_embedder.warm_up()
+
+document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine", bm25_parameters={"k": 1.2, "b": 0.5})
+
+########
+
+preprocessing_pipeline = Pipeline()
+preprocessing_pipeline.add_component("document_embedder", SentenceTransformersDocumentEmbedder())
+preprocessing_pipeline.add_component("writer", DocumentWriter(document_store=document_store))
+
+preprocessing_pipeline.connect("document_embedder", "writer")
+
+preprocessing_pipeline.run({
+    "document_embedder": {
+        "documents": documents
+    }
+})
 
 pipeline = Pipeline()
 pipeline.add_component("query_expander", QueryExpander(llm=llm))
@@ -122,7 +157,8 @@ for i in range(len(queries)):
             "top_k": 100
         },
         "bert_ranker": {
-            "query_embedding": get_vector_embedding(queries[i]["text"]),
+            # "query_embedding": get_vector_embedding(queries[i]["text"]),
+            "query_embedding": text_embedder.run(queries[i]["text"])["embedding"],
             "top_k": 100
         }
     })
@@ -141,4 +177,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-    scores.to_csv(r"results_hybrid_bigbird.txt", header=False, index=False, sep=" ")
+    scores.to_csv(r"results_hybrid_sentence_transform.txt", header=False, index=False, sep=" ")

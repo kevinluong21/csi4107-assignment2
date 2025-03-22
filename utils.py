@@ -23,7 +23,8 @@ class QueryExpander:
         if prompt == None:
           self.query_expansion_prompt = """
           You are part of an information system that processes users queries.
-          You expand a given query into {{number}} queries that are similar in meaning using as many different synonyms as possible.
+          You expand a given query into {{number}} queries that are similar in meaning Please use as MANY synonyms from biomedical, clinical, physical, and scientific fields as possible.
+          Try NOT to use the same words as the ones in the original query.
           ONLY return a Python list as a string. Do not elaborate on your answer and do not wrap your answer as Python code.
           For each expanded query, please wrap the string in double quotes (") and NOT single quotes.
           
@@ -50,6 +51,7 @@ class QueryExpander:
     def run(self, query: str, number: int = 5):
         result = self.pipeline.run({'builder': {'query': query, 'number': number}})
         expanded_query = json.loads(result['llm']['replies'][0].strip()) + [query]
+        print(list(expanded_query))
         return {"queries": list(expanded_query)}
     
 # this script comes from https://haystack.deepset.ai/cookbook/query-expansion
@@ -65,15 +67,14 @@ class MultiQueryInMemoryBM25Retriever:
         self.top_k = top_k
 
     def add_document(self, document: Document):
-        """
-        Only adds a new document if the document was not already retrieved.
-        """
         # if document.id not in self.ids:
         #     self.results.append(document)
         #     self.ids.add(document.id)
 
         if document.id not in self.results.keys():
             self.results[document.id] = document
+        else:
+            self.results[document.id].score = max(self.results[document.id].score, document.score)
 
     @component.output_types(documents=Dict[str, Document])
     def run(self, queries: List[str], top_k: int = 100):
@@ -119,8 +120,8 @@ class InMemoryEmbeddingRanker:
         result = self.ranker.run(query_embedding = query_embedding, top_k = self.top_k)
 
         for doc in result['documents']:
-            doc.score = (documents[doc.id].score + doc.score) / 2
-            # doc.score = (0.7 * documents[doc.id].score) + (0.3 * doc.score)
+            # doc.score = (documents[doc.id].score + doc.score) / 2
+            doc.score = (0.7 * documents[doc.id].score) + (0.3 * doc.score)
             self.add_document(doc)
 
         self.results.sort(key=lambda x: x.score, reverse=True)
