@@ -23,9 +23,10 @@ class QueryExpander:
         if prompt == None:
           self.query_expansion_prompt = """
           You are part of an information system that processes users queries.
-          You expand a given query into {{number}} queries that are similar in meaning Please use as MANY synonyms from biomedical, clinical, physical, and scientific fields as possible.
+          You expand a given query into {{number}} queries that are similar in meaning as a Python list. Please use as MANY synonyms from biomedical, clinical, physical, and scientific fields as possible.
           Try NOT to use the same words as the ones in the original query.
-          ONLY return a Python list as a string. Do not elaborate on your answer and do not wrap your answer as Python code.
+          You MUST return a Python list as a string!
+          Do not elaborate on your answer and do not wrap your answer as Python code.
           For each expanded query, please wrap the string in double quotes (") and NOT single quotes.
           
           Structure:

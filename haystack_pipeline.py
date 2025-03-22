@@ -14,10 +14,8 @@ from haystack.components.writers import DocumentWriter
 from haystack.components.preprocessors import DocumentCleaner, DocumentSplitter
 from haystack.components.embedders import SentenceTransformersDocumentEmbedder, SentenceTransformersTextEmbedder
 from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
-# from haystack.components.rankers import TransformersSimilarityRanker
 from transformers import AutoTokenizer, AutoModel, BertTokenizer, BertModel
 from haystack.components.generators import HuggingFaceLocalGenerator
-from optimum.quanto import QuantizedModelForCausalLM
 from haystack_integrations.components.generators.google_ai import GoogleAIGeminiGenerator
 
 # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -26,18 +24,18 @@ from haystack_integrations.components.generators.google_ai import GoogleAIGemini
 # tokenizer = BertTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
 # model = BertModel.from_pretrained("allenai/scibert_scivocab_uncased")
 
-tokenizer = AutoTokenizer.from_pretrained("google/bigbird-pegasus-large-arxiv")
-model = AutoModel.from_pretrained("google/bigbird-pegasus-large-arxiv")
+# tokenizer = AutoTokenizer.from_pretrained("google/bigbird-pegasus-large-arxiv")
+# model = AutoModel.from_pretrained("google/bigbird-pegasus-large-arxiv")
 
 load_dotenv()
 
 # llm = HuggingFaceLocalGenerator(model="thesven/Mistral-7B-Instruct-v0.3-GPTQ", huggingface_pipeline_kwargs={"device_map": "balanced"}, token=Secret.from_env_var("HF_TOKEN"))
 llm = GoogleAIGeminiGenerator(model="gemini-2.0-flash-lite", api_key=Secret.from_env_var("GOOGLE_AI_STUDIO"))
 
-def get_vector_embedding(text:str) -> list:
-    encoded_input = tokenizer(text, return_tensors='pt')
-    output = model(**encoded_input)
-    return output.last_hidden_state[:, 0, :][0].tolist()
+# def get_vector_embedding(text:str) -> list:
+#     encoded_input = tokenizer(text, return_tensors='pt')
+#     output = model(**encoded_input)
+#     return output.last_hidden_state[:, 0, :][0].tolist()
 
 # if os.path.exists("document_store.json"):
 #     print("Loading existing document store...")
@@ -108,23 +106,21 @@ cleaner = DocumentCleaner(
     keep_id=True
 )
 
-documents = cleaner.run(documents)["documents"]
-
 text_embedder = SentenceTransformersTextEmbedder()
 text_embedder.warm_up()
 
 document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine", bm25_parameters={"k": 1.2, "b": 0.5})
 
-########
-
 preprocessing_pipeline = Pipeline()
-preprocessing_pipeline.add_component("document_embedder", SentenceTransformersDocumentEmbedder())
+preprocessing_pipeline.add_component("cleaner", cleaner)
+preprocessing_pipeline.add_component("embedder", SentenceTransformersDocumentEmbedder())
 preprocessing_pipeline.add_component("writer", DocumentWriter(document_store=document_store))
 
-preprocessing_pipeline.connect("document_embedder", "writer")
+preprocessing_pipeline.connect("cleaner.documents", "embedder.documents")
+preprocessing_pipeline.connect("embedder.documents", "writer.documents")
 
 preprocessing_pipeline.run({
-    "document_embedder": {
+    "cleaner": {
         "documents": documents
     }
 })
