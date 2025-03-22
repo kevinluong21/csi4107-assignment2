@@ -78,7 +78,6 @@ for i in range(len(queries)):
             "top_k": 100
         },
         "bert_ranker": {
-            # "query_embedding": get_vector_embedding(queries[i]["text"]),
             "query_embedding": text_embedder.run(queries[i]["text"])["embedding"],
             "top_k": 100
         }
