@@ -1,4 +1,5 @@
 import json
+import pandas as pd
 from typing import List, Optional, Dict
 from preprocessing import format_for_bm25
 from haystack import Pipeline, Document, component
@@ -36,9 +37,9 @@ class QueryExpander:
           self.query_expansion_prompt = """
           You are part of an information system that processes users queries.
           You expand a given query into {{number}} queries that are similar in meaning as a Python list. Please use as MANY synonyms from biomedical, clinical, physical, and scientific fields as possible.
-          Try NOT to use the same words as the ones in the original query.
           You MUST return a Python list as a string!
-          Do not elaborate on your answer and do not wrap your answer as Python code.
+          Do not elaborate your answer.
+          Do not wrap your answer as Python code.
           For each expanded query, please wrap the string in double quotes (") and NOT single quotes.
           
           Structure:
@@ -63,33 +64,33 @@ class QueryExpander:
     @component.output_types(queries=List[str])
     def run(self, query: str, number: int = 5):
         result = self.pipeline.run({'builder': {'query': query, 'number': number}})
-        expanded_query = json.loads(result['llm']['replies'][0].strip()) + [query]
-        print(list(expanded_query))
-        return {"queries": list(expanded_query)}
+
+        error = True
+
+        while error:
+            try:
+                expanded_query = json.loads(result['llm']['replies'][0].strip()) + [query]
+                print(list(expanded_query))
+                error = False
+                return {"queries": list(expanded_query)}
+            except:
+                pass
     
 # this script comes from https://haystack.deepset.ai/cookbook/query-expansion
 @component
 class MultiQueryInMemoryBM25Retriever:
 
-    def __init__(self, retriever: InMemoryBM25Retriever, top_k: int = 100):
-
+    def __init__(self, retriever: InMemoryBM25Retriever):
         self.retriever = retriever
-        # self.results = []
         self.results = {}
-        # self.ids = set()
-        self.top_k = top_k
 
     def add_document(self, document: Document):
-        # if document.id not in self.ids:
-        #     self.results.append(document)
-        #     self.ids.add(document.id)
-
         if document.id not in self.results.keys():
             self.results[document.id] = document
         else:
             self.results[document.id].score = max(self.results[document.id].score, document.score)
 
-    @component.output_types(documents=Dict[str, Document])
+    @component.output_types(documents=List[Document])
     def run(self, queries: List[str], top_k: int = 100):
         if top_k != None:
           self.top_k = top_k
@@ -101,42 +102,37 @@ class MultiQueryInMemoryBM25Retriever:
           for doc in result['documents']:
             self.add_document(doc)
 
-        # self.results.sort(key=lambda x: x.score, reverse=True)
-        return {"documents": self.results}
+        documents = list(self.results.values())
 
-# this script was inspired by the scripts from https://haystack.deepset.ai/cookbook/query-expansion
+        documents.sort(key=lambda x: x.score, reverse=True)
+
+        self.results = {}
+        return {"documents": documents}
+    
 @component
-class InMemoryEmbeddingRanker:
-    def __init__(self, top_k: int = 100):
-        self.results = []
-        self.ids = set()
-        self.top_k = top_k
-
-    def add_document(self, document: Document):
-        """
-        Only adds a new document if the document was not already retrieved.
-        """
-        if document.id not in self.ids:
-            self.results.append(document)
-            self.ids.add(document.id)
-
+class BM25AndEmbedderRanker:
+    def __init__(self):
+        pass
+    
     @component.output_types(documents=List[Document])
-    def run(self, query_embedding, documents: Dict[str, Document], top_k: int = 100):
-        if top_k != None:
-          self.top_k = top_k
+    def run(self, bm25_docs: List[Document], embedding_docs: List[Document], bm25_weight:float = 0.3, embedding_weight:float = 0.7, top_k: int=100):
+        bm25_scores = [{"ID": document.id, "BM25Score": document.score} for document in bm25_docs]
+        embedding_scores = [{"ID": document.id, "EmbeddingScore": document.score} for document in embedding_docs]
 
-        document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine")
-        document_store.write_documents(list(documents.values()))
+        bm25_docs = {document.id: document for document in bm25_docs}
+        documents = bm25_docs | {document.id: document for document in embedding_docs if document.id not in bm25_docs.keys()}
 
-        self.ranker = InMemoryEmbeddingRetriever(document_store=document_store, scale_score=True, top_k=len(documents.keys()))
+        bm25_scores = pd.DataFrame(data=bm25_scores)
+        embedding_scores = pd.DataFrame(data=embedding_scores)
 
-        result = self.ranker.run(query_embedding = query_embedding, top_k = self.top_k)
+        results = pd.merge(left=bm25_scores, right=embedding_scores, left_on="ID", right_on="ID", how="outer")
+        results = results.fillna(value=0)
+        results["WeightedScore"] = (bm25_weight * results["BM25Score"]) + (embedding_weight * results["EmbeddingScore"])
+        results = results.sort_values(by="WeightedScore", ascending=False).reset_index(drop=True)
+        results = results.iloc[:top_k]
 
-        for doc in result['documents']:
-            # doc.score = (documents[doc.id].score + doc.score) / 2
-            # doc.score = (0.3 * documents[doc.id].score) + (0.7 * doc.score)
-            self.add_document(doc)
+        document_ids = set(results["ID"].to_list())
+        documents = [document for id, document in documents.items() if id in document_ids]
 
-        self.results.sort(key=lambda x: x.score, reverse=True)
-        self.results = self.results[:self.top_k]
-        return {"documents": self.results}
+        return {"documents": documents}
+

@@ -1,7 +1,7 @@
 # the following architecture is inspired by https://haystack.deepset.ai/cookbook/query-expansion
 
 import time
-from utils import load_jsonl, BM25Formatter, QueryExpander, MultiQueryInMemoryBM25Retriever, InMemoryEmbeddingRanker
+from utils import load_jsonl, BM25Formatter, QueryExpander, MultiQueryInMemoryBM25Retriever, BM25AndEmbedderRanker
 from preprocessing import format_for_bm25
 from dotenv import load_dotenv
 import numpy as np
@@ -32,10 +32,7 @@ cleaner = DocumentCleaner(
     keep_id=True
 )
 
-text_embedder = SentenceTransformersTextEmbedder(model="sentence-transformers/all-MiniLM-L6-v2")
-text_embedder.warm_up()
-
-document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine", bm25_parameters={"k": 1.2, "b": 0.5})
+document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine", bm25_parameters={"k": 1.2, "b": 0.75})
 
 preprocessing_pipeline = Pipeline()
 preprocessing_pipeline.add_component("cleaner", cleaner)
@@ -53,15 +50,23 @@ preprocessing_pipeline.run({
     }
 })
 
-pipeline = Pipeline()
-pipeline.add_component("query_expander", QueryExpander(llm=llm))
-pipeline.add_component("bm25_retriever", MultiQueryInMemoryBM25Retriever(retriever=InMemoryBM25Retriever(document_store=document_store, scale_score=True), top_k=100))
-pipeline.add_component("embedding_ranker", InMemoryEmbeddingRanker())
-# pipeline.add_component("similarity_ranker", TransformersSimilarityRanker())
+bm25_pipeline = Pipeline()
+bm25_pipeline.add_component("query_expander", QueryExpander(llm=llm))
+bm25_pipeline.add_component("bm25_retriever", MultiQueryInMemoryBM25Retriever(retriever=InMemoryBM25Retriever(document_store=document_store, scale_score=True)))
 
-pipeline.connect("query_expander.queries", "bm25_retriever.queries")
-pipeline.connect("bm25_retriever.documents", "embedding_ranker.documents")
-# pipeline.connect("embedding_ranker.documents", "similarity_ranker.documents")
+bm25_pipeline.connect("query_expander.queries", "bm25_retriever.queries")
+
+embedding_pipeline = Pipeline()
+embedding_pipeline.add_component("text_embedder", SentenceTransformersTextEmbedder(model="sentence-transformers/all-MiniLM-L6-v2"))
+embedding_pipeline.add_component("embedding_retriever", InMemoryEmbeddingRetriever(document_store=document_store, scale_score=True, top_k=100))
+
+embedding_pipeline.connect("text_embedder", "embedding_retriever")
+
+ranking_pipeline = Pipeline()
+ranking_pipeline.add_component("bm25_embedder_ranker", BM25AndEmbedderRanker())
+ranking_pipeline.add_component("transformers_ranker", TransformersSimilarityRanker())
+
+ranking_pipeline.connect("bm25_embedder_ranker.documents", "transformers_ranker.documents")
 
 queries = load_jsonl("queries_for_test.jsonl")
 scores = pd.DataFrame()
@@ -74,25 +79,39 @@ for i in range(len(queries)):
         print("Program will sleep for 60 seconds to avoid rate limits...")
         time.sleep(60)
 
-    results = pipeline.run({
+    bm25_docs = bm25_pipeline.run({
         "query_expander": {
             "query": queries[i]["text"],
-            "number": 10
+            "number": 5
         },
         "bm25_retriever": {
             "top_k": 100
-        },
-        "embedding_ranker": {
-            "query_embedding": text_embedder.run(queries[i]["text"])["embedding"],
-            "top_k": 100
-        },
-        # "similarity_ranker": {
-        #     "query": queries[i]["text"],
-        #     "top_k": 100
-        # }
+        }
     })
 
-    results = results["embedding_ranker"]["documents"]
+    bm25_docs = bm25_docs["bm25_retriever"]["documents"]
+
+    embedding_docs = embedding_pipeline.run({
+        "text_embedder": {
+            "text": queries[i]["text"]
+        }
+    })
+
+    embedding_docs = embedding_docs["embedding_retriever"]["documents"]
+
+    results = ranking_pipeline.run({
+        "bm25_embedder_ranker": {
+            "bm25_docs": bm25_docs,
+            "embedding_docs": embedding_docs,
+            "top_k": 100
+        },
+        "transformers_ranker": {
+            "query": queries[i]["text"],
+            "top_k": 100
+        }
+    })
+
+    results = results["transformers_ranker"]["documents"]
 
     for j in range(len(results)):
         row = {
@@ -106,4 +125,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-    scores.to_csv(r"results_hybrid_all-MiniLM-L6-v2.txt", header=False, index=False, sep=" ")
+    scores.to_csv(r"results_triad.txt", header=False, index=False, sep=" ")
