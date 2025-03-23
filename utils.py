@@ -13,6 +13,18 @@ def load_jsonl(file_path):
     with open(file_path, 'r') as file:
         return [json.loads(line) for line in file]
     
+@component
+class BM25Formatter:
+    def __init__(self):
+        pass
+
+    @component.output_types(documents=List[Document])
+    def run(self, documents:List[Document]):
+        for i in range(len(documents)):
+            documents[i].content = format_for_bm25(documents[i].content)
+
+        return {"documents": documents}
+        
 
 # this script comes from https://haystack.deepset.ai/cookbook/query-expansion and was modified to work with HuggingFace
 @component
@@ -122,7 +134,7 @@ class InMemoryEmbeddingRanker:
 
         for doc in result['documents']:
             # doc.score = (documents[doc.id].score + doc.score) / 2
-            doc.score = (0.7 * documents[doc.id].score) + (0.3 * doc.score)
+            # doc.score = (0.3 * documents[doc.id].score) + (0.7 * doc.score)
             self.add_document(doc)
 
         self.results.sort(key=lambda x: x.score, reverse=True)
