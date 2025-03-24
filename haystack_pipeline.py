@@ -41,7 +41,7 @@ document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_simi
 # Pre-processing pipeline involves cleaning, embedding (which stores it in the document's vector_embedding attribute), formatting the content for BM25, and writing all of these documents into the document store
 preprocessing_pipeline = Pipeline()
 preprocessing_pipeline.add_component("cleaner", cleaner)
-preprocessing_pipeline.add_component("embedder", SentenceTransformersDocumentEmbedder(model="sentence-transformers/all-MiniLM-L6-v2"))
+preprocessing_pipeline.add_component("embedder", SentenceTransformersDocumentEmbedder(model="sentence-transformers/all-MiniLM-L12-v2"))
 preprocessing_pipeline.add_component("formatter", BM25Formatter())
 preprocessing_pipeline.add_component("writer", DocumentWriter(document_store=document_store))
 
@@ -64,7 +64,7 @@ bm25_pipeline.connect("query_expander.queries", "bm25_retriever.queries")
 
 # The Embedding pipeline involves embedding the query using teh same model as the document embedder and retrieving all documents that are cosine similar to the document and ranking them
 embedding_pipeline = Pipeline()
-embedding_pipeline.add_component("text_embedder", SentenceTransformersTextEmbedder(model="sentence-transformers/all-MiniLM-L6-v2"))
+embedding_pipeline.add_component("text_embedder", SentenceTransformersTextEmbedder(model="sentence-transformers/all-MiniLM-L12-v2"))
 embedding_pipeline.add_component("embedding_retriever", InMemoryEmbeddingRetriever(document_store=document_store, scale_score=True, top_k=100))
 
 embedding_pipeline.connect("text_embedder", "embedding_retriever")
@@ -72,7 +72,7 @@ embedding_pipeline.connect("text_embedder", "embedding_retriever")
 # The ranking pipeline involves doing a weighted sum of documents retrieved by BM25 and by Embeddings to get a final score (by default, we weight the embedding score more than the BM25 score) and then re-ranking them again using a transformers model.
 ranking_pipeline = Pipeline()
 ranking_pipeline.add_component("bm25_embedder_ranker", BM25AndEmbedderRanker())
-ranking_pipeline.add_component("transformers_ranker", TransformersSimilarityRanker())
+ranking_pipeline.add_component("transformers_ranker", TransformersSimilarityRanker(model="cross-encoder/ms-marco-MiniLM-L12-v2"))
 
 ranking_pipeline.connect("bm25_embedder_ranker.documents", "transformers_ranker.documents")
 
@@ -91,7 +91,7 @@ for i in range(len(queries)):
     bm25_docs = bm25_pipeline.run({
         "query_expander": {
             "query": queries[i]["text"],
-            "number": 5
+            "number": 10
         },
         "bm25_retriever": {
             "top_k": 100
@@ -134,4 +134,4 @@ for i in range(len(queries)):
 
         scores = pd.concat([scores, pd.DataFrame(data=[row])])
 
-    scores.to_csv(r"results_triad.txt", header=False, index=False, sep=" ")
+    scores.to_csv(r"results_triad_v2.txt", header=False, index=False, sep=" ")

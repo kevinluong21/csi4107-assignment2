@@ -28,8 +28,11 @@ class BM25Formatter:
     @component.output_types(documents=List[Document])
     def run(self, documents:List[Document]):
         for i in range(len(documents)):
+            # Store the original content in the meta
+            documents[i].meta["original_content"] = documents[i].content
+            # Store the reformatted text for BM25 as the new content
             documents[i].content = format_for_bm25(documents[i].content)
-
+            
         return {"documents": documents}
         
 
@@ -46,6 +49,7 @@ class QueryExpander:
           self.query_expansion_prompt = """
           You are part of an information system that processes users queries.
           You expand a given query into {{number}} queries that are similar in meaning as a Python list. Please use as MANY synonyms from biomedical, clinical, physical, and scientific fields as possible.
+          Try to use words that are not in the original query.
           You MUST return a Python list as a string!
           Do not elaborate your answer.
           Do not wrap your answer as Python code.
@@ -152,6 +156,11 @@ class BM25AndEmbedderRanker:
         # Using the IDs of only the top_k documents, return a list of documents (they do not need to be ranked because a transformers ranker will re-rank them again).
         document_ids = set(results["ID"].to_list())
         documents = [document for id, document in documents.items() if id in document_ids]
+
+        # Restore the original content from the metadata
+        for i in range(len(documents)):
+            documents[i].content = documents[i].meta["original_content"]
+            del documents[i].meta["original_content"]
 
         return {"documents": documents}
 
