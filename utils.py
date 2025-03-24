@@ -10,12 +10,18 @@ from haystack.components.generators import HuggingFaceLocalGenerator
 from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
 from haystack_integrations.components.generators.google_ai import GoogleAIGeminiGenerator
 
-def load_jsonl(file_path):
+def load_jsonl(file_path) -> list[dict]:
+    """
+    Load a JSONL file in as a list of dictionaries.
+    """
     with open(file_path, 'r') as file:
         return [json.loads(line) for line in file]
     
 @component
 class BM25Formatter:
+    """
+    This component is responsible for reformatting every document in a list of documents, given a list of documents.
+    """
     def __init__(self):
         pass
 
@@ -30,6 +36,9 @@ class BM25Formatter:
 # this script comes from https://haystack.deepset.ai/cookbook/query-expansion and was modified to work with HuggingFace
 @component
 class QueryExpander:
+    """
+    This component uses an LLM to expand the given query using synonyms.
+    """
 
     def __init__(self, llm:GoogleAIGeminiGenerator, prompt: Optional[str] = None):
         self.query_expansion_prompt = prompt
@@ -67,6 +76,7 @@ class QueryExpander:
 
         error = True
 
+        # If the LLM accidentally returns a response that is NOT a Python list, loop back and run the pipeline again
         while error:
             try:
                 expanded_query = json.loads(result['llm']['replies'][0].strip()) + [query]
@@ -79,12 +89,16 @@ class QueryExpander:
 # this script comes from https://haystack.deepset.ai/cookbook/query-expansion
 @component
 class MultiQueryInMemoryBM25Retriever:
+    """
+    This component uses BM25 to retrieve documents for every query in the list of expanded queries and the original query. The resulting list of documents is a union of all documents that were retrieved across all queries.
+    """
 
     def __init__(self, retriever: InMemoryBM25Retriever):
         self.retriever = retriever
         self.results = {}
 
     def add_document(self, document: Document):
+        # Check if the document is already stored in the results. If not, add the new document. If it is, then take the max of either the new score or the score stored in the results.
         if document.id not in self.results.keys():
             self.results[document.id] = document
         else:
@@ -111,6 +125,9 @@ class MultiQueryInMemoryBM25Retriever:
     
 @component
 class BM25AndEmbedderRanker:
+    """
+    This component performs a weighted sum of the BM25 scores and the Embedding scores and then ranks all of the documents based on the new score.
+    """
     def __init__(self):
         pass
     
@@ -125,12 +142,14 @@ class BM25AndEmbedderRanker:
         bm25_scores = pd.DataFrame(data=bm25_scores)
         embedding_scores = pd.DataFrame(data=embedding_scores)
 
+        # Convert the list of documents into a pandas dataframe to merge on the IDs and perform a weighted sum, sorting, and then taking the top_k documents.
         results = pd.merge(left=bm25_scores, right=embedding_scores, left_on="ID", right_on="ID", how="outer")
         results = results.fillna(value=0)
         results["WeightedScore"] = (bm25_weight * results["BM25Score"]) + (embedding_weight * results["EmbeddingScore"])
         results = results.sort_values(by="WeightedScore", ascending=False).reset_index(drop=True)
         results = results.iloc[:top_k]
 
+        # Using the IDs of only the top_k documents, return a list of documents (they do not need to be ranked because a transformers ranker will re-rank them again).
         document_ids = set(results["ID"].to_list())
         documents = [document for id, document in documents.items() if id in document_ids]
 

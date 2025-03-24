@@ -16,12 +16,15 @@ from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbedd
 from haystack_integrations.components.generators.google_ai import GoogleAIGeminiGenerator
 from haystack.components.rankers import TransformersSimilarityRanker
 
+# An .env file is required to run the LLM
 load_dotenv()
 
+# Load the Gemini LLM from Google AI Studio and connect it to Haystack
 llm = GoogleAIGeminiGenerator(model="gemini-2.0-flash-lite", api_key=Secret.from_env_var("GOOGLE_AI_STUDIO"))
 
 documents = load_jsonl("scifact/corpus.jsonl")
 
+# For each document in the corpus, create a Document object and store it in a list
 documents = [Document(id=document["_id"], content=document["title"] + " " + document["text"], meta={"title": document["title"], **document["metadata"]}) for document in documents]
 
 cleaner = DocumentCleaner(
@@ -32,8 +35,10 @@ cleaner = DocumentCleaner(
     keep_id=True
 )
 
+# Instantiate a document store with parameters for BM25 and embedding similarity
 document_store = InMemoryDocumentStore(bm25_algorithm="BM25Plus", embedding_similarity_function="cosine", bm25_parameters={"k": 1.2, "b": 0.75})
 
+# Pre-processing pipeline involves cleaning, embedding (which stores it in the document's vector_embedding attribute), formatting the content for BM25, and writing all of these documents into the document store
 preprocessing_pipeline = Pipeline()
 preprocessing_pipeline.add_component("cleaner", cleaner)
 preprocessing_pipeline.add_component("embedder", SentenceTransformersDocumentEmbedder(model="sentence-transformers/all-MiniLM-L6-v2"))
@@ -50,18 +55,21 @@ preprocessing_pipeline.run({
     }
 })
 
+# The BM25 pipeline involves using an LLM to expand the query and then perform BM25 retrieval and rank them
 bm25_pipeline = Pipeline()
 bm25_pipeline.add_component("query_expander", QueryExpander(llm=llm))
 bm25_pipeline.add_component("bm25_retriever", MultiQueryInMemoryBM25Retriever(retriever=InMemoryBM25Retriever(document_store=document_store, scale_score=True)))
 
 bm25_pipeline.connect("query_expander.queries", "bm25_retriever.queries")
 
+# The Embedding pipeline involves embedding the query using teh same model as the document embedder and retrieving all documents that are cosine similar to the document and ranking them
 embedding_pipeline = Pipeline()
 embedding_pipeline.add_component("text_embedder", SentenceTransformersTextEmbedder(model="sentence-transformers/all-MiniLM-L6-v2"))
 embedding_pipeline.add_component("embedding_retriever", InMemoryEmbeddingRetriever(document_store=document_store, scale_score=True, top_k=100))
 
 embedding_pipeline.connect("text_embedder", "embedding_retriever")
 
+# The ranking pipeline involves doing a weighted sum of documents retrieved by BM25 and by Embeddings to get a final score (by default, we weight the embedding score more than the BM25 score) and then re-ranking them again using a transformers model.
 ranking_pipeline = Pipeline()
 ranking_pipeline.add_component("bm25_embedder_ranker", BM25AndEmbedderRanker())
 ranking_pipeline.add_component("transformers_ranker", TransformersSimilarityRanker())
@@ -71,6 +79,7 @@ ranking_pipeline.connect("bm25_embedder_ranker.documents", "transformers_ranker.
 queries = load_jsonl("queries_for_test.jsonl")
 scores = pd.DataFrame()
 
+# Run all 3 pipelines for each query and then save the results in a txt file
 for i in range(len(queries)):
     print(f"Generating results for query {i + 1}/{len(queries)}")
 
