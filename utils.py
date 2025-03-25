@@ -3,11 +3,9 @@ import pandas as pd
 from typing import List, Optional, Dict
 from preprocessing import format_for_bm25
 from haystack import Pipeline, Document, component
-from haystack.document_stores.in_memory import InMemoryDocumentStore
-from haystack.components.writers import DocumentWriter
+from haystack.components.preprocessors import DocumentSplitter
 from haystack.components.builders import PromptBuilder
-from haystack.components.generators import HuggingFaceLocalGenerator
-from haystack.components.retrievers import InMemoryBM25Retriever, InMemoryEmbeddingRetriever
+from haystack.components.retrievers import InMemoryBM25Retriever
 from haystack_integrations.components.generators.google_ai import GoogleAIGeminiGenerator
 
 def load_jsonl(file_path) -> list[dict]:
@@ -32,7 +30,7 @@ class BM25Formatter:
             documents[i].meta["original_content"] = documents[i].content
             # Store the reformatted text for BM25 as the new content
             documents[i].content = format_for_bm25(documents[i].content)
-            
+
         return {"documents": documents}
         
 
@@ -136,12 +134,13 @@ class BM25AndEmbedderRanker:
         pass
     
     @component.output_types(documents=List[Document])
-    def run(self, bm25_docs: List[Document], embedding_docs: List[Document], bm25_weight:float = 0.3, embedding_weight:float = 0.7, top_k: int=100):
+    def run(self, documents: List[Document], bm25_docs: List[Document], embedding_docs: List[Document], bm25_weight:float = 0.3, embedding_weight:float = 0.7, top_k: int=100):
         bm25_scores = [{"ID": document.id, "BM25Score": document.score} for document in bm25_docs]
-        embedding_scores = [{"ID": document.id, "EmbeddingScore": document.score} for document in embedding_docs]
+        # Splitting the documents means a new ID is assigned, so retrieve the original ID
+        embedding_scores = [{"ID": document.meta["source_id"], "EmbeddingScore": document.score} for document in embedding_docs]
 
-        bm25_docs = {document.id: document for document in bm25_docs}
-        documents = bm25_docs | {document.id: document for document in embedding_docs if document.id not in bm25_docs.keys()}
+        # bm25_docs = {document.id: document for document in bm25_docs}
+        # documents = bm25_docs | {document.id: document for document in embedding_docs if document.id not in bm25_docs.keys()}
 
         bm25_scores = pd.DataFrame(data=bm25_scores)
         embedding_scores = pd.DataFrame(data=embedding_scores)
@@ -150,17 +149,20 @@ class BM25AndEmbedderRanker:
         results = pd.merge(left=bm25_scores, right=embedding_scores, left_on="ID", right_on="ID", how="outer")
         results = results.fillna(value=0)
         results["WeightedScore"] = (bm25_weight * results["BM25Score"]) + (embedding_weight * results["EmbeddingScore"])
-        results = results.sort_values(by="WeightedScore", ascending=False).reset_index(drop=True)
+        results = results.sort_values(by="WeightedScore", ascending=False)
+
+        # After sorting, remove any duplicate IDs that may be caused during document splitting
+        results = results.drop_duplicates(subset="ID", keep="first").reset_index(drop=True)
         results = results.iloc[:top_k]
 
         # Using the IDs of only the top_k documents, return a list of documents (they do not need to be ranked because a transformers ranker will re-rank them again).
         document_ids = set(results["ID"].to_list())
-        documents = [document for id, document in documents.items() if id in document_ids]
+        documents = [document for document in documents if document.id in document_ids]
 
-        # Restore the original content from the metadata
-        for i in range(len(documents)):
-            documents[i].content = documents[i].meta["original_content"]
-            del documents[i].meta["original_content"]
+        # To prepare for TransformersSimiliarityRanker, split the documents again to avoid truncation
+        splitter = DocumentSplitter(split_by="sentence", split_length=3, split_overlap=2)
+        splitter.warm_up()
+        documents = splitter.run(documents=documents)["documents"]
 
         return {"documents": documents}
 
