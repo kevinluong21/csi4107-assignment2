@@ -3,7 +3,6 @@ import pandas as pd
 from typing import List, Optional, Dict
 from preprocessing import format_for_bm25
 from haystack import Pipeline, Document, component
-from haystack.components.preprocessors import DocumentSplitter
 from haystack.components.builders import PromptBuilder
 from haystack.components.retrievers import InMemoryBM25Retriever
 from haystack_integrations.components.generators.google_ai import GoogleAIGeminiGenerator
@@ -158,11 +157,7 @@ class BM25AndEmbedderRanker:
         # Using the IDs of only the top_k documents, return a list of documents (they do not need to be ranked because a transformers ranker will re-rank them again).
         document_ids = set(results["ID"].to_list())
         documents = [document for document in documents if document.id in document_ids]
-
-        # To prepare for TransformersSimiliarityRanker, split the documents again to avoid truncation
-        splitter = DocumentSplitter(split_by="sentence", split_length=3, split_overlap=2)
-        splitter.warm_up()
-        documents = splitter.run(documents=documents)["documents"]
+        documents = documents[:top_k]
 
         return {"documents": documents}
 

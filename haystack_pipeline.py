@@ -101,9 +101,11 @@ embedding_pipeline.connect("text_embedder", "embedding_retriever")
 # The ranking pipeline involves doing a weighted sum of documents retrieved by BM25 and by Embeddings to get a final score (by default, we weight the embedding score more than the BM25 score) and then re-ranking them again using a transformers model.
 ranking_pipeline = Pipeline()
 ranking_pipeline.add_component("bm25_embedder_ranker", BM25AndEmbedderRanker())
+ranking_pipeline.add_component("splitter", DocumentSplitter(split_by="sentence", split_length=3, split_overlap=2))
 ranking_pipeline.add_component("transformers_ranker", TransformersSimilarityRanker(model="cross-encoder/ms-marco-MiniLM-L12-v2", scale_score=True))
 
-ranking_pipeline.connect("bm25_embedder_ranker.documents", "transformers_ranker.documents")
+ranking_pipeline.connect("bm25_embedder_ranker.documents", "splitter.documents")
+ranking_pipeline.connect("splitter.documents", "transformers_ranker.documents")
 
 queries = load_jsonl("queries_for_test.jsonl")
 scores = pd.DataFrame()
@@ -142,7 +144,9 @@ for i in range(len(queries)):
             "documents": documents,
             "bm25_docs": bm25_docs,
             "embedding_docs": embedding_docs,
-            "top_k": 100
+            "top_k": 100,
+            "bm25_weight": 0.3,
+            "embedding_weight": 0.7
         },
         "transformers_ranker": {
             "query": queries[i]["text"],
