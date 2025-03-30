@@ -13,7 +13,7 @@
 | Alona Petrova |    - Revision and local testing <br> - Report writing |
 | Kevin Luong   | - Implementation of the pipeline<br>- Setting up 11 experiements <br>- Evaluation of the results <br>- Work on report<br> |
 
-## Introduction
+# Introduction
 
 In this project, we aim to develop an improved version of the Information Retrieval (IR) system implemented in Assignment 1 by integrating recent neural information retrieval techniques. The primary objective is to achieve better evaluation scores through the use of deep learning models, including transformers, BERT-like architectures, and Large Language Models (LLMs).
 
@@ -92,7 +92,7 @@ The system follows a modular, pipeline-based architecture with the following com
    - Outputs results to in TREC format.
 
 
-## Get Started / Instructions on How to Run the System
+# Get Started / Instructions on How to Run the System
 
 ### Prerequisites
 Before running the system, make sure you have the following:
@@ -311,32 +311,34 @@ Several optimization techniques are implemented in the system to enhance efficie
   - Ensures scalability and efficiency when handling large document collections.
 
 
-### 4. **Results Overview and Discussion**
+# **Results Overview and Discussion**
 
 The evaluation of different Information Retrieval (IR) systems was conducted using standard metrics: **Mean Average Precision (MAP)** and **Precision at 10 (P@10)**. Below is a summary of the results, along with a brief description of each approach:
 
 | IR System              | MAP    | P@10  | Description                                                                 |
 |------------------------|--------|-------|-----------------------------------------------------------------------------|
-| BM25                   | 0.5485 | 0.0847 | Standard BM25 model using default parameters for relevance scoring.         |
+| BM25 (assignment 1)                  | 0.5485 | 0.0847 | Standard BM25 model using default parameters for relevance scoring.         |
 | BM25_Haystack          | 0.4995 | 0.0750 | BM25 implementation using Haystack, with minimal parameter adjustments.     |
 | Embedding_Haystack     | 0.6031 | 0.0883 | Dense embedding retrieval using Haystack's embedding retriever.             |
-| Hybrid Ver2            | 0.5949 | 0.0873 | Hybrid model combining BM25 and embedding-based retriever (Version 2).      |
-| Hybrid_Ver2_Expansion  | 0.6095 | 0.0877 | Hybrid Ver2 with query expansion applied for improved recall.               |
-| Triad                  | 0.6379 | 0.0923 | Three-stage retrieval combining BM25, embeddings, and re-ranking.           |
-| Triad_v2               | 0.6519 | 0.0913 | Refined version of Triad with enhanced query processing and weights.        |
-| **Triad_v3**            | **0.6605** | **0.0943** | Optimized version of Triad_v2 with improved re-ranking and embeddings. **The best performing system.** |
-| Triad_v4               | 0.6583 | 0.0947 | Enhanced Triad with additional query expansion and improved fusion.         |
-| Triad_v5               | 0.6515 | 0.0947 | Refined version of Triad with minor parameter tuning.                       |
+| Hybrid Ver2            | 0.5949 | 0.0873 | Combines BM25 and sentence transformers (`all-MiniLM-L6-v2`) with a weighted sum (0.3 BM25, 0.7 embeddings).      |
+| Hybrid_Ver2_Expansion  | 0.6095 | 0.0877 | Same as Hybrid_Ver2 but includes query expansion using the Gemini model before applying BM25.               |
+| Triad                  | 0.6379 | 0.0923 | Extends Hybrid_Ver2 by adding a semantic text ranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`)         |
+| Triad_v2               | 0.6519 | 0.0913 | Fixes bugs in Triad by using original (unprocessed) documents for ranking and switches to larger models for embeddings (`all-MiniLM-L12-v2`) and ranking (`all-MiniLM-L12-v2`).        |
+| **Triad_v3**            | **0.6605** | **0.0943** |Builds on Triad_v2 by splitting documents into chunks of 3 sentences with 2-sentence overlap to prevent truncation and removes duplicate documents after ranking **The best performing system.** |
+| Triad_v4               | 0.6583 | 0.0947 | Changes the ranking model to a larger model (`cross-encoder/ms-marco-electra-base`) and reduces document splitting to 2 sentences with 1-sentence overlap.        |
+| Triad_v5               | 0.6515 | 0.0947 | Reverts to Triad_v3 but reduces document splitting to 2 sentences with 1-sentence overlap.                       |
 
 The result for the best performing model was saved under the name `results_triad_v3.txt`
 
-In this report we structured the results discussion in three sections
-1. We compare the best performing IR system with the Assignment 1 IR system. 
-2. We compare different appraoches and neural models we used to achieved the best performance for this assignment. 
-3. We provide first 10 results to queries 1 and 3, specifically for Triad_v2 (best performer) and Haystack_embedding (#TODO)
+#### In this report, we have structured the results and discussion into three sections:
+
+1. **Comparison of the best-performing IR system with the Assignment 1 IR system.**
+2. **Comparison of different approaches and neural models used to achieve the best performance in this assignment.** Specifically, we compare Triad_v3 (the best performer) with Triad_v4. Both systems utilized different neural retrieval approaches: Triad_v3 used dense embeddings (`all-MiniLM-L12-v2`), while Triad_v4 employed `cross-encoder/ms-marco-electra-base` (as discussed in section 4.2).
+3. **Presentation of the top 10 results for Queries 1 and 3** for both Triad_v3 (the best performer) and Triad_v4.
 
 
-## 4.1 Overall Performance Compared to Assignment 1
+
+## 1. Overall Performance Compared to Assignment 1
 
 The models implemented in this assignment significantly outperformed those in Assignment 1. The primary reason for this improvement is the introduction of a hybrid approach in the **triad_v3** model, which combines multiple retrieval and ranking techniques. While the models in Assignment 1 primarily relied on BM25 retrieval and basic re-ranking, **triad_v3** leverages query expansion, embedding-based retrieval, and cross-encoder ranking, which leads to more accurate document retrieval and relevance scoring.
 
@@ -367,13 +369,55 @@ The triad_v3 model outperformed the models from Assignment 1 due to the followin
 - The deduplication function ensures that only the most relevant chunk from each document is retained, avoiding redundant information.
 
 
-## 4.2 Neural Models Used for Improved Retrieval
+## 2. Neural Models Used for Improved Retrieval
 
-# TODO: neural models and also the result sfor each method (we have table but need more) 
+In this section, we discuss the two advanced neural retrieval models that were implemented: **Triad_v3** and **Triad_v4**, which extended earlier hybrid models by incorporating neural rankers and improving document processing.
 
 
-## 4.3 First 10 results for queries 1 and 3 
-### Triad_v3 system 
+### Triad_v3
+- **Overview:**  
+   Triad_v3 builds upon Triad_v2 by introducing document chunking to mitigate issues where long documents were truncated by the embedding and ranking models. Documents were split into chunks of **3 sentences with 2-sentence overlap**, ensuring that relevant content was captured without losing context.  
+   After retrieval and ranking, duplicate documents were removed to improve result diversity.
+
+- **Components:**
+  - **BM25:** Initial term-based retrieval.
+  - **Embeddings:** Sentence embeddings using `sentence-transformers/all-MiniLM-L12-v2` to enhance semantic relevance.
+  - **Semantic Ranker:** Cross-encoder model `sentence-transformers/all-MiniLM-L12-v2` used to refine rankings.
+
+- **Performance:**  
+   - **MAP:** 0.6605  
+   - **P@10:** 0.0943  
+
+Triad_v3 achieved the highest MAP, indicating strong relevance in the ranked documents. The document chunking approach prevented the truncation of longer documents and contributed to improved performance.
+
+---
+
+### Triad_v4
+- **Overview:**  
+   Triad_v4 is an extension of Triad_v3 that introduces a **larger and more sophisticated ranking model** (`cross-encoder/ms-marco-electra-base`). This model improves the ranking of candidate documents by providing more accurate semantic relevance judgments. Additionally, the document splitting strategy was adjusted to **2 sentences with 1-sentence overlap** to reduce processing overhead and capture finer-grained content.
+
+- **Components:**
+  - **BM25:** Initial term-based retrieval.
+  - **Embeddings:** Same `sentence-transformers/all-MiniLM-L12-v2` embedding model as Triad_v3.
+  - **Semantic Ranker:** Larger cross-encoder model `cross-encoder/ms-marco-electra-base` for improved relevance evaluation.
+
+- **Performance:**  
+   - **MAP:** 0.6583  
+   - **P@10:** 0.0947  
+
+Triad_v4 demonstrated slightly higher P@10, suggesting improved precision in the top 10 results. However, its MAP was marginally lower than Triad_v3, likely due to the finer-grained document splitting that may have reduced overall context.
+
+---
+
+#### Comparison and Insights
+- Both models significantly outperformed earlier systems, particularly in terms of MAP and P@10.
+- **Triad_v3** excelled in achieving the highest MAP due to its balanced document splitting and effective deduplication.
+- **Triad_v4** achieved better precision in the top 10 results by using a more complex ranker and finer document splitting, although the trade-off was a slight dip in overall MAP.
+
+These models illustrate the impact of incorporating neural rankers and optimized document processing techniques on retrieval performance.
+
+## 3. First 10 results for queries 1 and 3 
+### Triad_v3 system (`all-MiniLM-L12-v2`)
 
 The following tables  provide the top 10 results for queries 1 and 3 using Triad_v3 IR system
 
@@ -416,5 +460,69 @@ After further investigation, we figured that the correct document was retrieved 
 
 **Observation**: The correct document was retrieved at rank 1 with a high similarity score of 0.983919, indicating a successful retrieval.
 
-### SECOND SYSTEM 
-# TODO: add queries 1 and 3 tables 
+### Triad_v4 (`cross-encoder/ms-marco-electra-base`)
+The following tables provide the top 10 results for queries 1 and 3 using the Triad_v4 IR system.
+
+**Query 1**
+
+| Query ID | Q0  | Document ID | Rank | Similarity Score | Run  |
+| -------- | --- | ----------- | ---- | ---------------- | ---- |
+| 1        | Q0  | 40212412    | 1    | 0.002324         | run1 |
+| 1        | Q0  | 10931595    | 2    | 0.001993         | run1 |
+| 1        | Q0  | 2060137     | 3    | 0.000420         | run1 |
+| 1        | Q0  | 4346436     | 4    | 0.000285         | run1 |
+| 1        | Q0  | 7583104     | 5    | 0.000158         | run1 |
+| 1        | Q0  | 1065627     | 6    | 0.000132         | run1 |
+| 1        | Q0  | 5956016     | 7    | 0.000121         | run1 |
+| 1        | Q0  | 14103509    | 8    | 0.000079         | run1 |
+| 1        | Q0  | 6128334     | 9    | 0.000077         | run1 |
+| 1        | Q0  | 41329220    | 10   | 0.000065         | run1 |
+
+**Query 3**
+
+| Query ID | Q0  | Document ID | Rank | Similarity Score | Run  |
+| -------- | --- | ----------- | ---- | ---------------- | ---- |
+| 3        | Q0  | 14717500    | 1    | 0.905012         | run1 |
+| 3        | Q0  | 4378885     | 2    | 0.194825         | run1 |
+| 3        | Q0  | 19058822    | 3    | 0.092834         | run1 |
+| 3        | Q0  | 2739854     | 4    | 0.078753         | run1 |
+| 3        | Q0  | 23389795    | 5    | 0.023050         | run1 |
+| 3        | Q0  | 3222187     | 6    | 0.018730         | run1 |
+| 3        | Q0  | 12271486    | 7    | 0.017602         | run1 |
+| 3        | Q0  | 4414547     | 8    | 0.012884         | run1 |
+| 3        | Q0  | 14729253    | 9    | 0.011318         | run1 |
+| 3        | Q0  | 20375264    | 10   | 0.010078         | run1 |
+
+### Observations:
+
+- **Query 1:**
+  - The actual document (ID: 31715818) did not appear within the top 10 results for Triad_v4. It was retrieved at rank 46.
+
+
+- **Query 3:**
+  - The actual document (ID: 14717500) was retrieved at rank 1 with a similarity score of 0.905012, indicating a successful retrieval.
+  - The remaining documents are less relevant with a significant drop in similarity scores, but the top result was highly relevant.
+
+These results show that Triad_v4 achieved a successful retrieval for Query 3, but for Query 1, the correct document was not retrieved within the top 10, highlighting some limitations in the retrieval performance for certain queries.
+
+### Comparison for Query 1:
+- **Rank Comparison**: Both Triad_v3 and Triad_v4 retrieve the same document (ID: 40212412) at rank 1, but the similarity score in Triad_v4 (0.002324) is higher than in Triad_v3 (0.001539). However, neither system retrieves the correct document (ID: 31715818) within the top 10.
+- **Relevance**: Both systems return similar results, with some overlap in document IDs, but none of the results in the top 10 for either system are highly relevant based on the actual document for Query 1.
+
+### Comparison for Query 3:
+- **Rank Comparison**: Both Triad_v3 and Triad_v4 correctly retrieve the actual document (ID: 14717500) at rank 1, but the similarity score for Triad_v3 (0.983919) is higher than for Triad_v4 (0.905012).
+- **Relevance**: The first-ranked document in both systems is highly relevant, and both systems seem to perform well in terms of retrieving the correct document. However, the relevance of the remaining documents in Triad_v4 is much lower compared to Triad_v3.
+
+### Summary of the Comparison:
+
+- **Triad_v3** generally produces higher similarity scores for the top-ranked documents, especially for **Query 3**, where the correct document is retrieved at rank 1 with a very high similarity score (0.983919).
+- **Triad_v4** performs similarly to **Triad_v3** for **Query 3**, but for **Query 1**, neither system retrieves the correct document within the top 10, and the relevance of the results is relatively low.
+- Both systems demonstrate strengths in **Query 3** by retrieving the correct document, but **Triad_v3** seems to perform better overall in terms of similarity scores and relevance ranking.
+
+This comparison highlights that while both systems have their strengths, Triad_v3 performs slightly better in terms of overall retrieval quality, especially in terms of similarity scores for relevant documents.
+
+## Conclusion
+
+In this report, we compared the performance of various IR systems, focusing on Triad_v3 and Triad_v4. Both systems used different neural retrieval models: Triad_v3 employed `all-MiniLM-L12-v2` dense embeddings, while Triad_v4 utilized the `cross-encoder/ms-marco-electra-base` ranking model. 
+
+We also compared the performance of Triad_v3 with the original Assignment 1 IR system. The results showed significant improvements, with the Mean Average Precision (MAP) increasing from 0.5485 (Assignment 1) to 0.658 (Triad_v3), a 20% improvement. Similarly, Precision at Rank 10 (P@10) increased from 0.0847 (Assignment 1) to 0.0943 (Triad_v3), marking an 11% improvement. 
