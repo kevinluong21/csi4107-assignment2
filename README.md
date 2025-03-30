@@ -1,4 +1,4 @@
-# Assignment 1 (CSI-4107)
+# Assignment 2 (CSI-4107)
 ## Members of Group 25
 | Member        | Student Number |
 | ------------- | -------------- |
@@ -9,7 +9,7 @@
 ## Contributions
 | Member        | Contributions                                                                                                                                                |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Nalan Kurnaz  |    -   <br> - Report writing                                                                               |
+| Nalan Kurnaz  |    - Research on the IR systems  <br> - Report writing                                                                               |
 | Alona Petrova |    - Revision and local testing <br> - Report writing |
 | Kevin Luong   | - Implementation of the pipeline<br>- Setting up 11 experiements <br>- Evaluation of the results <br>- Work on report<br> |
 
@@ -309,3 +309,112 @@ Several optimization techniques are implemented in the system to enhance efficie
   - Large intermediate results are discarded after use to avoid memory bloat.
 - **Optimization Impact:**
   - Ensures scalability and efficiency when handling large document collections.
+
+
+### 4. **Results Overview and Discussion**
+
+The evaluation of different Information Retrieval (IR) systems was conducted using standard metrics: **Mean Average Precision (MAP)** and **Precision at 10 (P@10)**. Below is a summary of the results, along with a brief description of each approach:
+
+| IR System              | MAP    | P@10  | Description                                                                 |
+|------------------------|--------|-------|-----------------------------------------------------------------------------|
+| BM25                   | 0.5485 | 0.0847 | Standard BM25 model using default parameters for relevance scoring.         |
+| BM25_Haystack          | 0.4995 | 0.0750 | BM25 implementation using Haystack, with minimal parameter adjustments.     |
+| Embedding_Haystack     | 0.6031 | 0.0883 | Dense embedding retrieval using Haystack's embedding retriever.             |
+| Hybrid Ver2            | 0.5949 | 0.0873 | Hybrid model combining BM25 and embedding-based retriever (Version 2).      |
+| Hybrid_Ver2_Expansion  | 0.6095 | 0.0877 | Hybrid Ver2 with query expansion applied for improved recall.               |
+| Triad                  | 0.6379 | 0.0923 | Three-stage retrieval combining BM25, embeddings, and re-ranking.           |
+| Triad_v2               | 0.6519 | 0.0913 | Refined version of Triad with enhanced query processing and weights.        |
+| **Triad_v3**            | **0.6605** | **0.0943** | Optimized version of Triad_v2 with improved re-ranking and embeddings. **The best performing system.** |
+| Triad_v4               | 0.6583 | 0.0947 | Enhanced Triad with additional query expansion and improved fusion.         |
+| Triad_v5               | 0.6515 | 0.0947 | Refined version of Triad with minor parameter tuning.                       |
+
+The result for the best performing model was saved under the name `results_triad_v3.txt`
+
+In this report we structured the results discussion in three sections
+1. We compare the best performing IR system with the Assignment 1 IR system. 
+2. We compare different appraoches and neural models we used to achieved the best performance for this assignment. 
+3. We provide first 10 results to queries 1 and 3, specifically for Triad_v2 (best performer) and Haystack_embedding (#TODO)
+
+
+## 4.1 Overall Performance Compared to Assignment 1
+
+The models implemented in this assignment significantly outperformed those in Assignment 1. The primary reason for this improvement is the introduction of a hybrid approach in the **triad_v3** model, which combines multiple retrieval and ranking techniques. While the models in Assignment 1 primarily relied on BM25 retrieval and basic re-ranking, **triad_v3** leverages query expansion, embedding-based retrieval, and cross-encoder ranking, which leads to more accurate document retrieval and relevance scoring.
+
+
+## Best Performing Models
+
+Among the models tested, **triad_v3** was the top performer, with models using query expansion with BM25 also showing strong results. The combination of BM25 and embedding-based retrieval, followed by cross-encoder re-ranking, led to more relevant and precise document retrieval.
+
+## Comparison with previous IR system discussed in Assignment 1
+
+The triad_v3 model outperformed the models from Assignment 1 due to the following factors:
+
+### Hybrid Retrieval and Ranking:
+- **BM25 Retrieval**: Initial retrieval is performed using BM25, which effectively ranks documents based on term frequency and inverse document frequency.
+- **Embedding-Based Retrieval**: Cosine similarity between the embedded query and document representations further refines the initial BM25 results by capturing semantic relationships missed by traditional lexical matching.
+- **Cross-Encoder Re-Ranking**: The top-ranked documents are re-ranked using a cross-encoder, which computes relevance at a finer granularity by considering the query-document relationship in detail.
+
+### Query Expansion Using LLM:
+- The model uses Google's Gemini LLM to generate multiple query variations, enabling the retriever to capture a broader range of relevant documents.
+- This approach reduces the impact of query ambiguity, resulting in improved recall.
+
+### Weighted Scoring Between BM25 and Embedding Retrieval:
+- The model assigns a higher weight to embedding scores (0.7) compared to BM25 scores (0.3), allowing semantic similarity to play a dominant role in document selection.
+- This weighting mechanism balances the strengths of both approaches, enhancing overall retrieval performance.
+
+### Sentence-Level Document Splitting and Deduplication:
+- Documents are split at the sentence level with overlap, allowing finer granularity during retrieval and ranking.
+- The deduplication function ensures that only the most relevant chunk from each document is retained, avoiding redundant information.
+
+
+## 4.2 Neural Models Used for Improved Retrieval
+
+# TODO: neural models and also the result sfor each method (we have table but need more) 
+
+
+## 4.3 First 10 results for queries 1 and 3 
+### Triad_v3 system 
+
+The following tables  provide the top 10 results for queries 1 and 3 using Triad_v3 IR system
+
+**Query1** 
+
+| Query ID | Q0  | Document ID | Rank | Similarity Score | Run  |
+| -------- | --- | ----------- | ---- | ---------------- | ---- |
+| 1        | Q0  | 40212412    | 1    | 0.001539         | run1 |
+| 1        | Q0  | 43385013    | 2    | 0.001450         | run1 |
+| 1        | Q0  | 6863070     | 3    | 0.000552         | run1 |
+| 1        | Q0  | 10931595    | 4    | 0.000499         | run1 |
+| 1        | Q0  | 13231899    | 5    | 0.000243         | run1 |
+| 1        | Q0  | 27049238    | 6    | 0.000241         | run1 |
+| 1        | Q0  | 1065627     | 7    | 0.000222         | run1 |
+| 1        | Q0  | 16736872    | 8    | 0.000149         | run1 |
+| 1        | Q0  | 31543713    | 9    | 0.000080         | run1 |
+| 1        | Q0  | 1346695     | 10   | 0.000073         | run1 |
+
+
+**Query 3**
+| Query ID | Q0  | Document ID | Rank | Similarity Score | Run  |
+| -------- | --- | ----------- | ---- | ---------------- | ---- |
+| 3        | Q0  | 14717500    | 1    | 0.983919         | run1 |
+| 3        | Q0  | 2739854     | 2    | 0.896134         | run1 |
+| 3        | Q0  | 4414547     | 3    | 0.851782         | run1 |
+| 3        | Q0  | 4378885     | 4    | 0.543078         | run1 |
+| 3        | Q0  | 13914198    | 5    | 0.540342         | run1 |
+| 3        | Q0  | 19058822    | 6    | 0.457236         | run1 |
+| 3        | Q0  | 23389795    | 7    | 0.456205         | run1 |
+| 3        | Q0  | 1388704     | 8    | 0.425642         | run1 |
+| 3        | Q0  | 4632921     | 9    | 0.269687         | run1 |
+| 3        | Q0  | 2107238     | 10   | 0.182091         | run1 |
+
+**Actual Document for Query 1: 31715818**
+
+**Observation**: The correct document was not retrieved within the top 10 results. The highest-ranking document had a similarity score of only 0.001539, and none of the retrieved documents match the correct document.
+After further investigation, we figured that the correct document was retrieved at rank 74 with a similarity score of 0.000017. 
+
+**Actual Document for Query 3: 14717500**
+
+**Observation**: The correct document was retrieved at rank 1 with a high similarity score of 0.983919, indicating a successful retrieval.
+
+### SECOND SYSTEM 
+# TODO: add queries 1 and 3 tables 
